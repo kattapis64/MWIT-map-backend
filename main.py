@@ -30,7 +30,8 @@ SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USERNAME)
 
 USER_FIELDS = ["THNAME", "THSRNAME", "NAME", "SRNAME", "AFF", "ROLE"]
 ROLES = {"student", "teacher"}
-
+#DEBUG = os.environ.get("DEBUG") == "1"
+DEBUG = True
 # ---------- Helpers ----------
 def get_tables(context):
     # ---------- Helpers ----------
