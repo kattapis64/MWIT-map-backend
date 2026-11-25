@@ -245,4 +245,4 @@ def main(context):
         return context.res.json({"error": e.message}, e.code or 500)
     except Exception as e:
         context.error(str(e))
-        return context.res.json({"error": "Internal error"}, 500)
+        return context.res.json({"error": "Internal error"+str(e)}, 500)
