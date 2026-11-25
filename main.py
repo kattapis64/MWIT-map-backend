@@ -159,8 +159,8 @@ def book_room(context, tables):
     try:
         u = tables.get_row(DATABASE_ID, USER_TABLE_ID, user_id)
         who = (
-            f"{u['NAME']} {u['SRNAME']} ({u['THNAME']} {u['THSRNAME']})\n"
-            f"Role: {u['ROLE']}\nAffiliation: {u['AFF']}"
+            f"{u.rows['NAME']} {u.rows['SRNAME']} ({u.rows['THNAME']} {u.rows['THSRNAME']})\n"
+            f"Role: {u.rows['ROLE']}\nAffiliation: {u.rows['AFF']}"
         )
     except AppwriteException:
         who = f"User id: {user_id} (no profile found)"
