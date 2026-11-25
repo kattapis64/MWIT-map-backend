@@ -3,6 +3,7 @@ import hmac
 import html
 import os
 import smtplib
+import traceback
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from urllib.parse import urlencode
