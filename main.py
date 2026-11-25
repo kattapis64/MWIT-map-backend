@@ -31,7 +31,6 @@ SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USERNAME)
 USER_FIELDS = ["THNAME", "THSRNAME", "NAME", "SRNAME", "AFF", "ROLE"]
 ROLES = {"student", "teacher"}
 
-
 # ---------- Helpers ----------
 def get_tables(context):
     client = (
@@ -41,6 +40,24 @@ def get_tables(context):
         .set_key(context.req.headers["x-appwrite-key"])
     )
     return TablesDB(client)
+
+
+def as_dict(x):
+    """SDK results are dicts in old versions, model objects (Row, RowList) in new ones."""
+    if isinstance(x, dict):
+        d = x
+    elif hasattr(x, "to_dict"):
+        d = x.to_dict()
+    else:
+        d = dict(vars(x))
+    data = d.get("data")
+    if isinstance(data, dict):  # new SDKs nest the columns under "data"
+        d = {**data, **{k: v for k, v in d.items() if k != "data"}}
+    return d
+
+
+def row_id(d):
+    return d.get("$id") or d.get("id")
 
 
 def sign(booking_id, action):
@@ -100,13 +117,27 @@ def add_user(context, tables):
 
     try:
         # Row id = USERID so each user has exactly one row.
-        row = tables.create_row(DATABASE_ID, USER_TABLE_ID, user_id, data)
-        return context.res.json({"ok": True, "row": row["$id"]}, 201)
+        tables.create_row(DATABASE_ID, USER_TABLE_ID, user_id, data)
+        return context.res.json({"ok": True, "row": user_id}, 201)
     except AppwriteException as e:
         if e.code == 409:  # already registered -> update profile
             tables.update_row(DATABASE_ID, USER_TABLE_ID, user_id, data)
             return context.res.json({"ok": True, "row": user_id, "updated": True})
         raise
+
+
+# ---------- Route 1b: GET /users/me ----------
+def get_me(context, tables):
+    user_id = context.req.headers.get("x-appwrite-user-id")
+    if not user_id:
+        return context.res.json({"error": "Not logged in"}, 401)
+    try:
+        row = as_dict(tables.get_row(DATABASE_ID, USER_TABLE_ID, user_id))
+    except AppwriteException as e:
+        if e.code == 404:
+            return context.res.json({"error": "Not registered"}, 404)
+        raise
+    return context.res.json({"ok": True, "row": {k: row[k] for k in USER_FIELDS}})
 
 
 # ---------- Route 2: POST /bookings ----------
@@ -128,7 +159,7 @@ def book_room(context, tables):
         return context.res.json({"error": "BOOKED_DATE must be an ISO date"}, 400)
 
     # Reject if someone already holds this slot (pending or confirmed).
-    taken = tables.list_rows(
+    taken = as_dict(tables.list_rows(
         DATABASE_ID,
         BOOKING_TABLE_ID,
         [
@@ -138,11 +169,11 @@ def book_room(context, tables):
             Query.not_equal("STATUS", ["rejected"]),
             Query.limit(1),
         ],
-    )
+    ))
     if taken["total"] > 0:
         return context.res.json({"error": "Slot already requested or booked"}, 409)
 
-    booking = tables.create_row(
+    booking = as_dict(tables.create_row(
         DATABASE_ID,
         BOOKING_TABLE_ID,
         ID.unique(),
@@ -153,14 +184,15 @@ def book_room(context, tables):
             "BOOKED_DATE": booked_date,
             "USERID": user_id,
         },
-    )
+    ))
+    booking_id = row_id(booking)
 
     # Look up requester for the email (best effort).
     try:
-        u = tables.get_row(DATABASE_ID, USER_TABLE_ID, user_id)
+        u = as_dict(tables.get_row(DATABASE_ID, USER_TABLE_ID, user_id))
         who = (
-            f"{u.rows['NAME']} {u.rows['SRNAME']} ({u.rows['THNAME']} {u.rows['THSRNAME']})\n"
-            f"Role: {u.rows['ROLE']}\nAffiliation: {u.rows['AFF']}"
+            f"{u['NAME']} {u['SRNAME']} ({u['THNAME']} {u['THSRNAME']})\n"
+            f"Role: {u['ROLE']}\nAffiliation: {u['AFF']}"
         )
     except AppwriteException:
         who = f"User id: {user_id} (no profile found)"
@@ -168,7 +200,7 @@ def book_room(context, tables):
     base = (PUBLIC_URL or f"https://{context.req.host}").rstrip("/")
 
     def link(action):
-        q = urlencode({"id": booking["$id"], "action": action, "sig": sign(booking["$id"], action)})
+        q = urlencode({"id": booking_id, "action": action, "sig": sign(booking_id, action)})
         return f"{base}/approve?{q}"
 
     try:
@@ -183,7 +215,7 @@ def book_room(context, tables):
     except Exception as e:
         context.error(f"Email failed: {e}")
 
-    return context.res.json({"ok": True, "booking": booking["$id"], "STATUS": "pending"}, 201)
+    return context.res.json({"ok": True, "booking": booking_id, "STATUS": "pending"}, 201)
 
 
 # ---------- Route 3: GET /approve (no auth, signed link) ----------
@@ -197,7 +229,7 @@ def approve(context, tables):
         return page(context, "Invalid link", "<p>Signature check failed.</p>", 403)
 
     try:
-        row = tables.get_row(DATABASE_ID, BOOKING_TABLE_ID, booking_id)
+        row = as_dict(tables.get_row(DATABASE_ID, BOOKING_TABLE_ID, booking_id))
     except AppwriteException:
         return page(context, "Not found", "<p>Booking not found.</p>", 404)
 
@@ -233,6 +265,8 @@ def main(context):
     method = context.req.method
 
     try:
+        if path == "/users/me" and method == "GET":
+            return get_me(context, tables)
         if path == "/users" and method == "POST":
             return add_user(context, tables)
         if path == "/bookings" and method == "POST":
@@ -245,4 +279,4 @@ def main(context):
         return context.res.json({"error": e.message}, e.code or 500)
     except Exception as e:
         context.error(str(e))
-        return context.res.json({"error": "Internal error"+str(e)}, 500)
+        return context.res.json({"error": "Internal error"}, 500)
