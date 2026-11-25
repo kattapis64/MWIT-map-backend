@@ -14,9 +14,9 @@ from appwrite.query import Query
 from appwrite.services.tables_db import TablesDB
 
 # ---------- Config (set as function variables) ----------
-DATABASE_ID = os.environ.get("DATABASE_ID", "BookedRooms")
-USER_TABLE_ID = os.environ.get("USER_TABLE_ID", "User")
-BOOKING_TABLE_ID = os.environ.get("BOOKING_TABLE_ID", "BookedRooms")
+DATABASE_ID = os.environ.get("DATABASE_ID", "6b0663c10013c539ce08")
+USER_TABLE_ID = os.environ.get("USER_TABLE_ID", "6b067b6f002d5ecc6f1c")
+BOOKING_TABLE_ID = os.environ.get("BOOKING_TABLE_ID", "6b0663d80015144b2faf")
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 APPROVAL_SECRET = os.environ.get("APPROVAL_SECRET", "")  # long random string
